@@ -23,13 +23,16 @@ export function ControlPanel( { values, onChange, backend, onBackend, support }:
 					<button
 						type="button"
 						className="segmented__item"
-						onClick={ () => {
-							if ( document.fullscreenElement ) {
-								document.exitFullscreen();
-							} else {
-								document.documentElement.requestFullscreen();
-							}
-						} }
+					onClick={ () => {
+						const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+						if ( document.fullscreenElement || ( document as any ).webkitFullscreenElement ) {
+							if ( document.exitFullscreen ) document.exitFullscreen();
+							else ( document as any ).webkitExitFullscreen?.();
+						} else {
+							if ( el.requestFullscreen ) el.requestFullscreen();
+							else el.webkitRequestFullscreen?.();
+						}
+					} }
 						title="Toggle fullscreen"
 					>
 						Fullscreen
