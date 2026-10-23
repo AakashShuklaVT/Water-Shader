@@ -1,5 +1,5 @@
 import { Fn } from 'three/tsl';
-import { vec3, float, clamp, pow, max, dot, exp, sqrt, normalize } from './math';
+import { vec3, float, clamp, pow, max, min, dot, exp, sqrt, normalize } from './math';
 
 /**
  * TSL node type (the upstream typings for TSL call signatures are loose).
@@ -105,7 +105,7 @@ export const smithGeometry = Fn( ( [ nDotV, nDotL, roughness ]: [ N, N, N ] ) =>
  */
 export const waterExtinction = Fn( ( [ visibility, clarity ]: [ N, N ] ) => {
 
-	const base = vec3( 0.42, 0.078, 0.030 );
+	const base = vec3( 0.50, 0.078, 0.030 );
 	const visibilityScale = float( 12 ).div( max( visibility, float( 1 ) ) );
 
 	return base.mul( visibilityScale ).div( max( clarity, float( 0.05 ) ) );
@@ -150,7 +150,7 @@ export const waterScatterColor = Fn( ( [ viewDir, sunDir, sunIntensity ]: [ N, N
 
 	// radiance of a fully scattered water column, tuned so that the deep
 	// water sits slightly below the zenith sky in brightness
-	const base = vec3( 0.016, 0.065, 0.115 ).mul( sunIntensity );
+	const base = vec3( 0.014, 0.072, 0.130 ).mul( sunIntensity );
 
 	return base.add( base.mul( forward ).mul( 2.2 ) );
 
@@ -161,5 +161,64 @@ export const waterScatterColor = Fn( ( [ viewDir, sunDir, sunIntensity ]: [ N, N
 		{ name: 'viewDir', type: 'vec3' },
 		{ name: 'sunDir', type: 'vec3' },
 		{ name: 'sunIntensity', type: 'float' },
+	],
+} );
+
+/**
+ * Scattering coefficient of the water column (grey, per metre).
+ *
+ * It controls how quickly the column turns into its own colour: the light
+ * that scatters back has been filtered by the water on its way down and on
+ * its way up, so a short path returns a pale, sand dominated turquoise
+ * while a long one returns the deep blue of the open sea.
+ */
+const SCATTERING_COEFFICIENT = 0.032;
+
+/**
+ * Radiance of the water column that is seen from above the surface.
+ *
+ * The light that enters the water is scattered back towards the eye. The
+ * *amount* of the column that scatters grows with the path length and
+ * saturates, so the deep water converges to its own colour instead of
+ * fading to black. The hue comes from the medium itself: the red is
+ * swallowed by the water within a few metres, which is what turns the
+ * shallows turquoise.
+ *
+ * @param pathLength distance the eye ray travels inside the water
+ * @param viewDir direction the eye ray travels in
+ * @param sunDir direction towards the sun
+ * @param sunIntensity strength of the sun
+ * @param visibility underwater visibility in metres
+ * @param clarity clarity of the water
+ */
+export const waterInScatter = Fn(
+	( [ pathLength, viewDir, sunDir, sunIntensity, visibility, clarity ]: [ N, N, N, N, N, N ] ) => {
+
+		const sun = normalize( sunDir );
+		const forward = pow( max( dot( viewDir, sun ), float( 0 ) ), float( 6 ) );
+
+		// the colour of the light the water itself scatters: strongly
+		// cyan, the red is absorbed within the first metres
+		const base = vec3( 0.010, 0.340, 0.420 );
+
+		// how much of the column contributes: saturates with the path length
+		const amount = float( 1 ).sub( exp( float( - SCATTERING_COEFFICIENT ).mul( pathLength ) ) );
+
+		// the red is removed over the first metres, the deeper the column the
+		// more the colour converges to the pure water colour
+		const tint = exp( waterExtinction( visibility, clarity ).mul( min( pathLength, float( 6 ) ).mul( 0.35 ) ).negate() );
+
+		return base.mul( amount ).mul( tint ).mul( sunIntensity ).mul( float( 1 ).add( forward.mul( 1.1 ) ) );
+
+	} ).setLayout( {
+	name: 'oceanWaterInScatter',
+	type: 'vec3',
+	inputs: [
+		{ name: 'pathLength', type: 'float' },
+		{ name: 'viewDir', type: 'vec3' },
+		{ name: 'sunDir', type: 'vec3' },
+		{ name: 'sunIntensity', type: 'float' },
+		{ name: 'visibility', type: 'float' },
+		{ name: 'clarity', type: 'float' },
 	],
 } );

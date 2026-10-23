@@ -20,12 +20,17 @@ export function createSkyDome( radius = 14000 ) {
 	material.name = 'sky-dome';
 	material.side = BackSide;
 	material.depthWrite = false;
-	material.depthTest = false;
+
+	// The dome is drawn *after* the water and the sea floor and it is depth
+	// tested: the sky shader is expensive (the Preetham model plus the cloud
+	// layer) and there is no point in evaluating it for the pixels that the
+	// water already covers. That alone saves most of the sky cost.
+	material.depthTest = true;
 	material.fog = false;
 
 	const dir = normalize( positionWorld.sub( cameraPosition ) );
 
-	const sky = skyRadiance( dir, float( 1 ), U.sunDirection, U.rayleigh, U.turbidity, U.cloudCoverage, U.time );
+	const sky = skyRadiance( dir, float( 1 ), U.sunDirection, U.rayleigh, U.turbidity, U.cloudCoverage, U.time, float( 1 ) );
 	const haze = waterScatterColor( dir, U.sunDirection, U.sunIntensity ).mul( 2.4 );
 
 	material.colorNode = mix( sky, haze, U.underwater );
@@ -33,7 +38,9 @@ export function createSkyDome( radius = 14000 ) {
 	const mesh = new Mesh( geometry, material );
 	mesh.name = 'sky';
 	mesh.frustumCulled = false;
-	mesh.renderOrder = - 1000;
+
+	// drawn after everything else that writes depth
+	mesh.renderOrder = 1000;
 
 	return mesh;
 

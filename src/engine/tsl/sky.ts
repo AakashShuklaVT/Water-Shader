@@ -1,4 +1,4 @@
-import { Fn } from 'three/tsl';
+import { Fn, If } from 'three/tsl';
 import { vec3, float, acos, cos, pow, exp, dot, max, min, clamp, mix, smoothstep, normalize } from './math';
 import { perlin } from './noise';
 
@@ -56,7 +56,7 @@ function cloudFbm( p: N, drift: N ) {
 	let amplitude = float( 1 );
 	let q = p;
 
-	for ( let i = 0; i < 4; i ++ ) {
+	for ( let i = 0; i < 3; i ++ ) {
 
 		result = result.add( amplitude.mul( perlin( q ) ) );
 		amplitude = amplitude.mul( 0.5 );
@@ -83,7 +83,7 @@ function cloudFbm( p: N, drift: N ) {
  * @param time animation time
  */
 export const skyRadiance = Fn(
-	( [ dir, sunAmount, sunDir, rayleigh, turbidity, coverage, time ]: [ N, N, N, N, N, N, N ] ) => {
+	( [ dir, sunAmount, sunDir, rayleigh, turbidity, coverage, time, cloudAmount ]: [ N, N, N, N, N, N, N, N ] ) => {
 
 		const sun = normalize( sunDir );
 
@@ -163,46 +163,57 @@ export const skyRadiance = Fn(
 		texColor = texColor.add( sundiscColor );
 
 		// ------------------------------------------------------------ clouds
-		const dirY = max( dir.y, float( 0.05 ) );
-		const cloudUV = dir.xz.div( dirY.mul( CLOUD_ELEVATION ) ).mul( CLOUD_SCALE ).add( time.mul( CLOUD_SPEED ) );
+		//
+		// The cloud layer is the most expensive part of the sky (four noise
+		// evaluations per pixel). It is skipped entirely when it is not
+		// needed: the water reflects the sky along a ray that points close
+		// to the horizon, where the cloud layer is faded out anyway.
+		const result = texColor.toVar();
 
-		const evolve = time.mul( CLOUD_SPEED ).mul( 300 );
-		const cloudNoise = clamp( cloudFbm( cloudUV.mul( 1000 ), evolve ).mul( 0.7 ).add( 0.5 ), 0, 1 );
-		const region = perlin( cloudUV.mul( 300 ) ).mul( 0.37 ).add( 0.5 );
-		const cov = clamp( coverage.add( region.sub( 0.5 ).mul( 0.6 ) ), 0, 1 );
+		If( cloudAmount.greaterThan( 0.5 ), () => {
 
-		const threshold = float( 1 ).sub( cov );
-		const cloudMask = smoothstep( threshold, threshold.add( 0.3 ), cloudNoise );
-		const horizonFade = smoothstep( float( 0 ), float( 0.03 ).add( float( 0.06 ).mul( CLOUD_ELEVATION ) ), dir.y );
-		const dayFactor = smoothstep( float( - 0.08 ), float( 0.3 ), sun.y );
+			const dirY = max( dir.y, float( 0.05 ) );
+			const cloudUV = dir.xz.div( dirY.mul( CLOUD_ELEVATION ) ).mul( CLOUD_SCALE ).add( time.mul( CLOUD_SPEED ) );
 
-		// the clouds are lit directly by the sun, the disc is not attenuated
-		const cloudSun = sunE.mul( Fex ).mul( 0.22 ).mul( SKY_RADIANCE_SCALE );
-		const skyAmbient = LinHorizon.mul( SKY_RADIANCE_SCALE ).add( vec3( 0, 0.00015, 0.000375 ) );
+			const evolve = time.mul( CLOUD_SPEED ).mul( 300 );
+			const cloudNoise = clamp( cloudFbm( cloudUV.mul( 1000 ), evolve ).mul( 0.7 ).add( 0.5 ), 0, 1 );
+			const region = perlin( cloudUV.mul( 300 ) ).mul( 0.37 ).add( 0.5 );
+			const cov = clamp( coverage.add( region.sub( 0.5 ).mul( 0.6 ) ), 0, 1 );
 
-		const cloudDepth = max( float( 0 ), cloudNoise.sub( threshold ) );
-		const beer = exp( cloudDepth.mul( - 4 ) );
-		const powder = float( 1 ).sub( beer.mul( beer ) );
-		const shade = mix( float( 0.45 ), float( 1 ), clamp( beer.mul( powder ).mul( 2.6 ), 0, 1 ) );
-		const silver = clamp( float( 0.51 ).div( pow( max( float( 1.49 ).sub( cosTheta.mul( 1.4 ) ), float( 0.05 ) ), float( 1.5 ) ) ), 0, 3 );
-		const edge = cloudMask.mul( float( 1 ).sub( cloudMask ) ).mul( 4 );
+			const threshold = float( 1 ).sub( cov );
+			const cloudMask = smoothstep( threshold, threshold.add( 0.3 ), cloudNoise );
+			const horizonFade = smoothstep( float( 0 ), float( 0.03 ).add( float( 0.06 ).mul( CLOUD_ELEVATION ) ), dir.y );
+			const dayFactor = smoothstep( float( - 0.08 ), float( 0.3 ), sun.y );
 
-		const cloudColor = skyAmbient.add( cloudSun.mul( shade ) )
-			.add( cloudSun.mul( silver ).mul( edge ).mul( 0.6 ) )
-			.mul( max( dayFactor, float( 0.03 ) ) );
+			// the clouds are lit directly by the sun, the disc is not attenuated
+			const cloudSun = sunE.mul( Fex ).mul( 0.22 ).mul( SKY_RADIANCE_SCALE );
+			const skyAmbient = LinHorizon.mul( SKY_RADIANCE_SCALE ).add( vec3( 0, 0.00015, 0.000375 ) );
 
-		const cloudAlpha = float( 1 ).sub( exp( cloudDepth.mul( CLOUD_DENSITY ).mul( - 12 ) ) ).mul( horizonFade );
+			const cloudDepth = max( float( 0 ), cloudNoise.sub( threshold ) );
+			const beer = exp( cloudDepth.mul( - 4 ) );
+			const powder = float( 1 ).sub( beer.mul( beer ) );
+			const shade = mix( float( 0.45 ), float( 1 ), clamp( beer.mul( powder ).mul( 2.6 ), 0, 1 ) );
+			const silver = clamp( float( 0.51 ).div( pow( max( float( 1.49 ).sub( cosTheta.mul( 1.4 ) ), float( 0.05 ) ), float( 1.5 ) ) ), 0, 3 );
+			const edge = cloudMask.mul( float( 1 ).sub( cloudMask ) ).mul( 4 );
 
-		// the solar disc is hidden behind an opaque cloud
-		texColor = texColor.sub( L0.mul( SKY_RADIANCE_SCALE ).mul( cloudAlpha ) );
+			const cloudColor = skyAmbient.add( cloudSun.mul( shade ) )
+				.add( cloudSun.mul( silver ).mul( edge ).mul( 0.6 ) )
+				.mul( max( dayFactor, float( 0.03 ) ) );
 
-		const cloudAerial = mix( texColor, cloudColor, Fex );
-		texColor = mix( texColor, cloudAerial, cloudAlpha );
+			const cloudAlpha = float( 1 ).sub( exp( cloudDepth.mul( CLOUD_DENSITY ).mul( - 12 ) ) ).mul( horizonFade );
+
+			// the solar disc is hidden behind an opaque cloud
+			const shaded = texColor.sub( L0.mul( SKY_RADIANCE_SCALE ).mul( cloudAlpha ) );
+
+			const cloudAerial = mix( shaded, cloudColor, Fex );
+			result.assign( mix( shaded, cloudAerial, cloudAlpha ) );
+
+		} );
 
 		// Safety net: the value is used for the reflections as well, a single
 		// invalid sample would show up as a black or white patch on the
 		// water. Clamping keeps the result finite and bounded.
-		return min( max( texColor, vec3( 0 ) ), vec3( 20000 ) );
+		return min( max( result, vec3( 0 ) ), vec3( 20000 ) );
 
 	} ).setLayout( {
 	name: 'oceanSkyRadiance',
@@ -215,6 +226,7 @@ export const skyRadiance = Fn(
 		{ name: 'turbidity', type: 'float' },
 		{ name: 'coverage', type: 'float' },
 		{ name: 'time', type: 'float' },
+		{ name: 'cloudAmount', type: 'float' },
 	],
 } );
 
@@ -224,7 +236,8 @@ export const skyRadiance = Fn(
 export const skyAmbientLight = Fn(
 	( [ sunDir, rayleigh, turbidity, coverage, time ]: [ N, N, N, N, N ] ) => {
 
-		return skyRadiance( vec3( 0, 1, 0 ), float( 0 ), sunDir, rayleigh, turbidity, coverage, time ).mul( 0.45 );
+		// the zenith never carries a cloud, so the cloud layer is skipped
+		return skyRadiance( vec3( 0, 1, 0 ), float( 0 ), sunDir, rayleigh, turbidity, coverage, time, float( 0 ) ).mul( 0.45 );
 
 	} ).setLayout( {
 	name: 'oceanSkyAmbient',

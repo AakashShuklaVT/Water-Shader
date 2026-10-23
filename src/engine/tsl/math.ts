@@ -1,3 +1,8 @@
+// `three/webgpu` registers the TSL node namespace at the end of its module
+// body and `three/tsl` reads it. Importing the webgpu entry point first
+// guarantees that the namespace is ready no matter in which order the
+// bundler walks the module graph.
+import 'three/webgpu';
 import * as TSL from 'three/tsl';
 
 /**

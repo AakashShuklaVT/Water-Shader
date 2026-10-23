@@ -1,12 +1,39 @@
 import { Fn } from 'three/tsl';
 import { vec2, float, clamp, pow, abs } from './math';
-import { perlin } from './noise';
+import { perlin, perlinD } from './noise';
 
 /**
  * TSL node type (the upstream typings for TSL call signatures are loose).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type N = any;
+
+/**
+ * Drift field that warps the caustic network.
+ *
+ * The caustics are warped by the slope of the water surface, but evaluating
+ * the full wave field here would cost five noise evaluations and fourteen
+ * sine/cosine pairs per fragment - for a detail that only has to drift and
+ * focus. A single drifting gradient gives the same read for a fraction of
+ * the price.
+ *
+ * @param p world space XZ position on the seabed
+ * @param time animation time
+ */
+export const causticWarp = Fn( ( [ p, time ]: [ N, N ] ) => {
+
+	const n = perlinD( p.mul( 0.55 ).add( vec2( time.mul( 0.085 ), time.mul( - 0.058 ) ) ) );
+
+	return n.yz.mul( 0.09 );
+
+} ).setLayout( {
+	name: 'oceanCausticWarp',
+	type: 'vec2',
+	inputs: [
+		{ name: 'p', type: 'vec2' },
+		{ name: 'time', type: 'float' },
+	],
+} );
 
 /**
  * Caustic light pattern projected onto the seabed.
@@ -30,10 +57,12 @@ export const causticPattern = Fn( ( [ p, gradient, time ]: [ N, N, N ] ) => {
 
 	const v = n1.mul( 0.62 ).add( n2.mul( 0.44 ) );
 
-	// ridge like falloff -> thin bright filaments
+	// ridge like falloff -> bright filaments. The exponent is kept low on
+	// purpose: a sharp ridge turns into a thin, hard edged net that reads
+	// as a pattern drawn on the sea floor instead of focused light.
 	const ridge = clamp( float( 1 ).sub( abs( v ).mul( 1.1 ) ), 0, 1 );
 
-	return pow( ridge, float( 3.0 ) );
+	return pow( ridge, float( 2.0 ) );
 
 } ).setLayout( {
 	name: 'oceanCausticPattern',

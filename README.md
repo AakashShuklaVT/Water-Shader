@@ -131,11 +131,25 @@ underwater view uses.
   length of that path drives the Beer-Lambert absorption. The light that
   reaches the floor is lit by the sun, the sky and the moving caustics.
 * **Water body** – what is missing on the way back is added as the
-  in-scattering of the water column. This is what keeps the deep water blue
-  instead of black; without it the ocean turns into a mirror of the sky and
-  the deep water disappears.
-* **Foam** – white caps where the large waves become steep enough to break,
-  broken up by two noise octaves so they read as streaks rather than patches.
+  in-scattering of the water column. Two things shape it: the *amount* of the
+  column that scatters grows with the path length and saturates (so the deep
+  water converges to its own colour instead of fading to black), and the
+  *tint* is the absorption of the water, which swallows the red within the
+  first metres. That is what turns the shallows turquoise and keeps the open
+  sea blue, and it is the single most important term for the colour of the
+  ocean.
+* **Foam** – foam is a bubble field, not a painted texture. A domain warped,
+  multi scale noise is thresholded into a lacy structure, so only the peaks
+  of the field break into foam while the rest stays water. The threshold is
+  chosen against the *measured* distribution of the summed octaves (standard
+  deviation 0.155 against 0.247 for a single octave), which is why the
+  coverage stays at a few percent instead of covering the whole sea.
+  * White caps sit on the crest tops of waves that are steep enough to break
+    (both the height and the steepness matter, otherwise the foam ends up as
+    a thin ribbon on the steep flank).
+  * Wind streaks are long narrow regions marked by a noise stretched along the
+    wind; the bubble field erodes them into filaments. The finest bubble
+    layer is dropped with the distance so that it does not alias.
 * **From below** – a second material renders the Snell window: inside the
   critical angle the sky is visible (compressed by refraction and attenuated
   by the water column), outside of it total internal reflection takes over.
@@ -147,9 +161,11 @@ underwater view uses.
   lives in `tsl/sand.ts` and is shared by the sea floor mesh and by the ocean
   surface, so the shallow water and the underwater view always agree.
 * Caustics are a network of bright filaments warped by the gradient of the
-  wave field, so they drift and focus with the waves. Their contrast is kept
-  moderate: the sea floor has to read as a soft bottom and not compete with
-  the water surface.
+  wave field, so they drift and focus with the waves. They are the same
+  sunlight, focused, so they modulate the direct light around one instead of
+  replacing it. The ridge of the network is kept broad: a sharp ridge turns
+  into a thin hard edged net that reads as a pattern drawn on the sea floor
+  rather than as focused light.
 * Absorption uses the per-channel extinction coefficients of clear ocean water
   (Jerlov type I) scaled by the visibility and clarity controls, with
   in-scattering added along the path.
@@ -180,6 +196,10 @@ share one exposure and one tone curve and no colour space conversion is
 applied twice. `SUN_IRRADIANCE` in `tsl/uniforms.ts` ties the sun's irradiance
 to the sky's radiance so that the balance between sky reflection, sunlit sand
 and specular highlights matches what a camera would record.
+
+The water in-scattering, the sand and the foam all scale with that constant,
+so raising it moves the whole scene towards the bright, saturated look of a
+tropical lagoon and lowering it towards a cold, grey open sea.
 
 ---
 

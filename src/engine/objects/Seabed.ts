@@ -6,9 +6,9 @@ import {
 } from '../tsl/math';
 import { U } from '../tsl/uniforms';
 import { waveSurface } from '../tsl/waves';
-import { waterTransmittance, waterScatterColor } from '../tsl/water';
+import { waterTransmittance, waterInScatter } from '../tsl/water';
 import { seabedHeight } from '../tsl/seabedField';
-import { sandColour } from '../tsl/sand';
+import { sandVisible } from '../tsl/sand';
 import { createRadialGrid } from './radialGrid';
 import type { QualityPreset } from '../quality';
 
@@ -77,13 +77,22 @@ export function createSeabed( quality: QualityPreset ): Mesh {
 	const pathLength = mix( dist, length( hit.sub( crossPos ) ), isAbove );
 
 	// --- surface normal and lighting ---------------------------------------
-	const lit = sandColour( sandP, quality.softShadows );
+	const lit = sandVisible(
+		sandP, pathLength, quality.softShadows ? float( 1 ) : float( 0 ),
+		U.waterDepth, U.sunDirection, U.sunColor, U.sunIntensity,
+		U.rayleigh, U.turbidity, U.cloudCoverage, U.causticsIntensity, U.time,
+	);
 
 	// --- water column ------------------------------------------------------
 	const T = waterTransmittance( pathLength, U.underwaterVisibility, U.waterClarity );
-	const scatter = waterScatterColor( toFrag.div( max( dist, float( 0.001 ) ) ), U.sunDirection, U.sunIntensity );
+	const inScatter = waterInScatter(
+		pathLength,
+		toFrag.div( max( dist, float( 0.001 ) ) ),
+		U.sunDirection, U.sunIntensity,
+		U.underwaterVisibility, U.waterClarity,
+	);
 
-	const colour = lit.mul( T ).add( scatter.mul( float( 1 ).sub( T ) ) );
+	const colour = lit.mul( T ).add( inScatter );
 
 	material.colorNode = vec4( colour, 1 );
 

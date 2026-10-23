@@ -9,7 +9,7 @@ import { uniform } from 'three/tsl';
  * irradiance of 3 the balance between the sky, the sun lit sand and the
  * specular highlights of the water matches what a camera would record.
  */
-export const SUN_IRRADIANCE = 1.6;
+export const SUN_IRRADIANCE = 3.0;
 
 /**
  * Central uniform block shared by every TSL material in the scene.

@@ -111,7 +111,7 @@ function detailGradient( p: N, viewDist: N, time: N, amplitude: N ) {
 	const d1 = perlinD( p.mul( 0.55 ).add( vec2( time.mul( 0.17 ), time.mul( - 0.11 ) ) ) );
 	const d2 = perlinD( p.mul( 1.95 ).sub( vec2( time.mul( 0.26 ), time.mul( 0.15 ) ) ) );
 
-	return d1.yz.mul( 0.55 * 0.050 ).add( d2.yz.mul( 1.95 * 0.014 ) ).mul( strength );
+	return d1.yz.mul( 0.55 * 0.075 ).add( d2.yz.mul( 1.95 * 0.026 ) ).mul( strength );
 
 }
 

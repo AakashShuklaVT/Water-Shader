@@ -74,7 +74,14 @@ export class OceanEngine {
 
 		this.container = container;
 		this.values = { ...options.values };
-		this.quality = QUALITY_PRESETS[ ( options.values.quality as QualityPreset[ 'name' ] ) ?? 'high' ];
+
+		// Start from the highest preset, then step down automatically if
+		// requested ('auto') or if the frame rate collapses.
+		this.quality = QUALITY_PRESETS.high;
+		if (options.values?.quality) {
+			const q = QUALITY_PRESETS[ options.values.quality as keyof typeof QUALITY_PRESETS ];
+			if (q) this.quality = q;
+		}
 
 		// Every engine owns its own canvas: a canvas can only ever have one
 		// WebGL context, so a new one is required whenever the renderer is
@@ -85,10 +92,36 @@ export class OceanEngine {
 
 		this.renderer = new WebGPURenderer( {
 			canvas: this.canvas,
-			antialias: true,
+			// MSAA multiplies the memory bandwidth of the frame buffer. On a
+			// phone that costs more than it is worth, and the water shader is
+			// fragment bound anyway.
+			antialias: ! this.isMobileDevice(),
 			alpha: false,
 			forceWebGL: options.backend === 'webgl',
 		} );
+
+	}
+
+	/**
+	 * A coarse pointer is a reliable hint for a touch device.
+	 */
+	private isMobileDevice(): boolean {
+
+		if ( typeof window.matchMedia === 'function' ) {
+
+			try {
+
+				return window.matchMedia( '(pointer: coarse)' ).matches;
+
+			} catch ( error ) {
+
+				// matchMedia is not available, fall through
+
+			}
+
+		}
+
+		return navigator.maxTouchPoints > 1 && window.innerWidth < 900;
 
 	}
 
@@ -108,7 +141,6 @@ export class OceanEngine {
 
 		this.renderer.toneMapping = AgXToneMapping;
 		this.renderer.toneMappingExposure = this.values.exposure as number;
-		this.renderer.setPixelRatio( Math.min( window.devicePixelRatio || 1, 2 ) );
 
 		this.rig = new CameraRig( this.canvas, this.width / this.height );
 		this.sky = createSkyDome();
@@ -157,6 +189,12 @@ export class OceanEngine {
 
 		const w = this.width;
 		const h = this.height;
+
+		// The water shader is fragment bound, so the resolution of the
+		// drawing buffer is the strongest performance lever there is. The
+		// preset caps the device pixel ratio and adds a render scale on top.
+		const dpr = Math.min( window.devicePixelRatio || 1, this.quality.pixelRatioCap );
+		this.renderer.setPixelRatio( dpr * this.quality.renderScale );
 
 		this.renderer.setSize( w, h, false );
 		this.rig.resize( w / h );
@@ -247,6 +285,7 @@ export class OceanEngine {
 
 		this.quality = QUALITY_PRESETS[ name ];
 		this.buildScene();
+		this.resize();
 
 	}
 
@@ -259,6 +298,7 @@ export class OceanEngine {
 
 		this.quality = QUALITY_PRESETS[ order[ index + 1 ] ];
 		this.buildScene();
+		this.resize();
 
 	}
 
@@ -303,14 +343,18 @@ export class OceanEngine {
 			this.fpsFrames = 0;
 
 			// adaptive quality: step the preset down when the frame rate
-			// collapses and stay there (no oscillation)
+			// collapses and stay there (no oscillation). A very low frame
+			// rate is stepped down almost immediately, a merely low one
+			// after a couple of seconds.
 			if ( this.autoQuality ) {
 
-				if ( this.fps < 28 ) {
+				if ( this.fps < 26 ) {
 
 					this.lowFpsTime += elapsed;
 
-					if ( this.lowFpsTime > 3 ) {
+					const needed = this.fps < 14 ? 0.5 : 2;
+
+					if ( this.lowFpsTime > needed ) {
 
 						this.lowFpsTime = 0;
 						this.stepDownQuality();
@@ -343,6 +387,12 @@ export class OceanEngine {
 		// From above the water the ocean surface is opaque and shades the sea
 		// floor itself, so the separate floor mesh would only cost fill rate.
 		this.seabed.visible = submerged;
+
+		// The particles and the light shafts live inside the water. Above the
+		// water line they are completely invisible, but their fragment
+		// shaders would still run over a large part of the screen.
+		this.particles.visible = submerged;
+		this.shafts.visible = submerged;
 
 		this.renderer.render( this.scene, this.rig.camera );
 	};

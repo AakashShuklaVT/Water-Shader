@@ -92,7 +92,7 @@ export const PARAM_GROUPS: ParamGroup[] = [
 					{ value: 'high', label: 'High' },
 					{ value: 'ultra', label: 'Ultra' },
 				],
-				value: 'high',
+				value: 'auto',
 			},
 			{ kind: 'number', key: 'exposure', label: 'Exposure', min: 0.2, max: 2.4, step: 0.01, value: 0.9 },
 		],
