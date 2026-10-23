@@ -19,6 +19,23 @@ export function ControlPanel( { values, onChange, backend, onBackend, support }:
 			</div>
 
 			<div className="panel__body">
+				<div className="segmented">
+					<button
+						type="button"
+						className="segmented__item"
+						onClick={ () => {
+							if ( document.fullscreenElement ) {
+								document.exitFullscreen();
+							} else {
+								document.documentElement.requestFullscreen();
+							}
+						} }
+						title="Toggle fullscreen"
+					>
+						Fullscreen
+					</button>
+				</div>
+
 				<div className="group">
 					<div className="group__title">Renderer</div>
 					<div className="segmented">

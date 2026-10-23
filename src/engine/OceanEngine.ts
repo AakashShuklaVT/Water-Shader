@@ -75,12 +75,16 @@ export class OceanEngine {
 		this.container = container;
 		this.values = { ...options.values };
 
-		// Start from the highest preset, then step down automatically if
-		// requested ('auto') or if the frame rate collapses.
-		this.quality = QUALITY_PRESETS.high;
+		// Start from a mid preset, then step down automatically if
+		// requested ('auto') or if the frame rate collapses. Starting at
+		// 'high' made the first frames heavy on lower-end GPUs.
+		this.quality = QUALITY_PRESETS.medium;
 		if (options.values?.quality) {
-			const q = QUALITY_PRESETS[ options.values.quality as keyof typeof QUALITY_PRESETS ];
-			if (q) this.quality = q;
+			const qname = options.values.quality as string;
+			if ( qname !== 'auto' ) {
+				const q = QUALITY_PRESETS[ qname as keyof typeof QUALITY_PRESETS ];
+				if (q) this.quality = q;
+			}
 		}
 
 		// Every engine owns its own canvas: a canvas can only ever have one
@@ -383,6 +387,11 @@ export class OceanEngine {
 		U.underwater.value = submerged ? Math.min( 1, - y * 2.5 ) : 0;
 
 		this.ocean.setUnderwater( submerged );
+
+		// The sky dome is only needed above the water line. Fully submerged
+		// we fade it into haze, so skip the expensive Preetham evaluation
+		// entirely once the camera is deep enough.
+		this.sky.visible = ! submerged || U.underwater.value < 0.99;
 
 		// From above the water the ocean surface is opaque and shades the sea
 		// floor itself, so the separate floor mesh would only cost fill rate.
